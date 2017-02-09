@@ -27,7 +27,7 @@ defmodule AntidoteMetricsScript do
 
     # set cookie
     :erlang.set_cookie(my_name(), @cookie)
-    Enum.each(targets, fn(target) -> :erlang.set_cookie(target, @cookie) end)
+    Enum.each(targets, fn(target) -> :erlang.set_cookie(:erlang.list_to_atom(target), @cookie) end)
 
     # seed random number
     :rand.seed(:exsplus, {:erlang.phash2([my_name()]), :erlang.monotonic_time(), :erlang.unique_integer()})
@@ -111,7 +111,7 @@ defmodule AntidoteMetricsScript do
 
   # generates a random event from a weighted list of events
   defp get_random_event() do
-    roll = :rand.uniform(10001) - 1
+    roll = :rand.uniform(101) - 1
     {event, _} = @events
     |> Enum.drop_while(fn({_, p}) -> roll > p end)
     |> List.first()
@@ -124,14 +124,14 @@ defmodule AntidoteMetricsScript do
     case :rpc.call(target, module, function, args) do
       {:ok, result} -> result
       {:error, reason} ->
-        Logger.error("Error #{reason}")
-        System.halt(0)
+        Logger.error("Error #{inspect([reason])}")
+        graceful_shutdown()
       :error ->
         Logger.error("Error.")
-        System.halt(0)
+        graceful_shutdown()
       {:badrpc, reason} ->
-        Logger.error("Bad RPC #{reason}")
-        System.halt(0)
+        Logger.error("Bad RPC #{inspect([reason])}")
+        graceful_shutdown()
     end
   end
 
@@ -198,6 +198,11 @@ defmodule AntidoteMetricsScript do
   defp my_name() do
     localhost = :net_adm.localhost()
     :erlang.list_to_atom('metrics' ++ '@' ++ localhost)
+  end
+
+  defp graceful_shutdown() do
+    Logger.flush
+    System.halt(0)
   end
 
 end
