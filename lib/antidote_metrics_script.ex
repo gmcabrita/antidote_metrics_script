@@ -2,6 +2,7 @@ defmodule AntidoteMetricsScript do
 
   require Logger
 
+  @folder "results"
   @num_operations 500000
   @cookie :antidote
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
@@ -17,16 +18,19 @@ defmodule AntidoteMetricsScript do
     ]
   end
 
-  def start(_args \\ []) do
+  def main(_args \\ []) do
     targets = ['antidote1@127.0.0.1', 'antidote2@127.0.0.1', 'antidote3@127.0.0.1', 'antidote4@127.0.0.1', 'antidote5@127.0.0.1']
     num_players = 25000
 
+    # start our node
+    {:ok, _} = :net_kernel.start([my_name(), :longnames])
+
     # set cookie
-    :erlang.set_cookie(node(), @cookie)
+    :erlang.set_cookie(my_name(), @cookie)
     Enum.each(targets, fn(target) -> :erlang.set_cookie(target, @cookie) end)
 
     # seed random number
-    :rand.seed(:exsplus, {:erlang.phash2([node()]), :erlang.monotonic_time(), :erlang.unique_integer()})
+    :rand.seed(:exsplus, {:erlang.phash2([my_name()]), :erlang.monotonic_time(), :erlang.unique_integer()})
 
     initial_state = %State{targets: targets, num_players: num_players}
     final_state = Enum.reduce(0..@num_operations, initial_state, fn (op_number, state) ->
@@ -34,7 +38,7 @@ defmodule AntidoteMetricsScript do
       run(event, op_number, state)
     end)
 
-    print_metrics(final_state)
+    store_metrics(final_state)
   end
 
   def run(:topkd_add, op_number, state) do
@@ -161,34 +165,39 @@ defmodule AntidoteMetricsScript do
 
     # get total message payloads
     {ccrdt_payload, crdt_payload} = Enum.map(state.targets, fn (t) ->
-      ccrdt_payload = rpc(t, :antidote, :message_payloads, [:ccrdt])
-      crdt_payload = rpc(t, :antidote, :message_payloads, [:crdt])
-      {ccrdt_payload, crdt_payload}
+      rpc(t, :antidote, :message_payloads, [])
     end)
 
     {%{size: avg_size_ccrdt, payload: ccrdt_payload}, %{size: avg_size_crdt, payload: crdt_payload}}
   end
 
-  defp print_metrics(state) do
-    # ccrdt
-    IO.puts("CCRDT Metrics")
-    IO.puts("Total message payloads:")
-    print_metric(state.ccrdt_metrics.payload)
-    IO.puts("Average replica sizes:")
-    print_metric(state.ccrdt_metrics.size)
+  defp store_metrics(state) do
+    File.mkdir_p(@folder)
 
-    # crdt
-    IO.puts("CRDT Metrics")
-    IO.puts("Total message payloads:")
-    print_metric(state.crdt_metrics.payload)
-    IO.puts("Average replica sizes:")
-    print_metric(state.crdt_metrics.size)
-  end
-
-  defp print_metric(metric) do
-    Enum.reduce(metric, 1, fn (m, acc) ->
-      IO.puts("#{acc * 100000};#{m}")
-      acc + 1
+    Logger.info("Total message payloads:")
+    {:ok, file} = File.open("#{@folder}payload.dat", [:append])
+    Enum.zip(state.ccrdt_metrics.payload, state.crdt_metrics.payload)
+    |> Enum.reduce(1, fn({m1,m2}, acc) ->
+      line = "#{acc * @ops_per_metric}\t#{m1}\t#{m2}\n"
+      IO.binwrite(file, line)
+      Logger.info(line)
     end)
+    File.close(file)
+
+    Logger.info("Average replica sizes:")
+    {:ok, file} = File.open("#{@folder}size.dat", [:append])
+    Enum.zip(state.ccrdt_metrics.size, state.crdt_metrics.size)
+    |> Enum.reduce(1, fn({m1,m2}, acc) ->
+      line = "#{acc * @ops_per_metric}\t#{m1}\t#{m2}\n"
+      IO.binwrite(file, line)
+      Logger.info(line)
+    end)
+    File.close(file)
   end
+
+  defp my_name() do
+    localhost = :net_adm.localhost()
+    :erlang.list_to_atom('metrics' ++ '@' ++ localhost)
+  end
+
 end
