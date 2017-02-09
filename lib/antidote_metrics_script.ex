@@ -20,6 +20,7 @@ defmodule AntidoteMetricsScript do
 
   def main(_args \\ []) do
     targets = ['antidote1@127.0.0.1', 'antidote2@127.0.0.1', 'antidote3@127.0.0.1', 'antidote4@127.0.0.1', 'antidote5@127.0.0.1']
+    |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
     num_players = 25000
 
     # start our node
@@ -27,7 +28,7 @@ defmodule AntidoteMetricsScript do
 
     # set cookie
     :erlang.set_cookie(my_name(), @cookie)
-    Enum.each(targets, fn(target) -> :erlang.set_cookie(:erlang.list_to_atom(target), @cookie) end)
+    Enum.each(targets, fn(target) -> :erlang.set_cookie(target, @cookie) end)
 
     # seed random number
     :rand.seed(:exsplus, {:erlang.phash2([my_name()]), :erlang.monotonic_time(), :erlang.unique_integer()})
