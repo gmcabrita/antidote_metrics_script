@@ -90,7 +90,7 @@ defmodule AntidoteMetricsScript do
       state
     else
       elements = Map.get(internal, player_id)
-      |> :ordsets.to_list()
+      |> :sets.to_list()
       |> Enum.map(fn({id, score, _}) -> {id, score} end)
 
       updates = [{object_ccrdt, :del, player_id}, {object_crdt, :remove_all, elements}]
@@ -155,6 +155,24 @@ defmodule AntidoteMetricsScript do
     byte_size(:erlang.term_to_binary(object))
   end
 
+  defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {visible, hidden, deletes, _}) do
+    hidden
+    |> :maps.values()
+    |> Enum.reduce(0, fn(x, acc) -> acc + :sets.size(x) end)
+  end
+
+  defp get_replica_size(:antidote_crdt_orset, orset) do
+    :orddict.size(orset)
+  end
+
+  defp get_replica_size(:antidote_ccrdt_topk, {top, _}) do
+    :maps.size(top)
+  end
+
+  defp get_replica_size(:antidote_crdt_gset, set) do
+    :ordsets.size(set)
+  end
+
   # checks if metrics need to be updateds given the current op_number
   defp update_metrics(op_number, state, object_ccrdt, object_crdt) do
     if rem(op_number + 1, 100) == 0, do: Logger.info("Op number: #{op_number + 1}")
@@ -167,11 +185,11 @@ defmodule AntidoteMetricsScript do
   end
 
   # retrieves metrics
-  defp get_metrics(state, object_ccrdt, object_crdt) do
+  defp get_metrics(state, {_, typecc, _} = object_ccrdt, {_, typec, _} = object_crdt) do
     # get average replica sizes
     {res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
     [value_ccrdt, value_crdt] = res
-    {sizes_ccrdt, sizes_crdt} = {get_size(value_ccrdt), get_size(value_crdt)}
+    {sizes_ccrdt, sizes_crdt} = {get_replica_size(type_cc, value_ccrdt), get_replica_size(typec, value_crdt)}
 
     # get total message payloads
     {ccrdt_payload, crdt_payload} = rpc(state.target, :antidote, :message_payloads, [])
