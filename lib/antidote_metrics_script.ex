@@ -181,12 +181,12 @@ defmodule AntidoteMetricsScript do
   defp store_metrics(states) do
     {ccrdt_sizes, ccrdt_payloads, crdt_sizes, crdt_payloads} = states
     |> Stream.map(fn(state) ->
-      {ccs, ccp} = Enum.reduce(state.ccrdt_metrics, {0, 0}, fn(m, {size, payload}) ->
-        {size + m.size, payload + m.payload}
+      {ccs, ccp} = Enum.map(state.ccrdt_metrics, fn(m) ->
+        {m.size, m.payload}
       end)
 
-      {cs, cp} = Enum.reduce(state.crdt_metrics, {0, 0}, fn(m, {size, payload}) ->
-        {size + m.size, payload + m.payload}
+      {cs, cp} = Enum.map(state.crdt_metrics, fn(m) ->
+        {m.size, m.payload}
       end)
 
       {ccs, ccp, cs, cp}
