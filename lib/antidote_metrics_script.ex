@@ -144,6 +144,7 @@ defmodule AntidoteMetricsScript do
   # checks if metrics need to be updateds given the current op_number
   defp update_metrics(op_number, state, object_ccrdt, object_crdt) do
     if rem(op_number + 1, @ops_per_metric) == 0 do
+      Logger.info("Op number: #{op_number + 1}")
       {ccrdt, crdt} = get_metrics(state, object_ccrdt, object_crdt)
       {state.ccrdt_metrics ++ [ccrdt], state.crdt_metrics ++ [crdt]}
     else
@@ -197,8 +198,7 @@ defmodule AntidoteMetricsScript do
   end
 
   defp my_name() do
-    localhost = :net_adm.localhost()
-    :erlang.list_to_atom('metrics' ++ '@' ++ localhost)
+    :erlang.list_to_atom('metrics' ++ '@127.0.0.1')
   end
 
   defp graceful_shutdown() do
