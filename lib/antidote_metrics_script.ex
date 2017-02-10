@@ -44,7 +44,7 @@ defmodule AntidoteMetricsScript do
 
     states = Enum.map(initial_states, fn(initial_state) ->
       Task.async(fn ->
-        Enum.reduce(0..div(@num_operations, 5), initial_state, fn(op_number, state) ->
+        Enum.reduce(0..div(@num_operations, @nodes), initial_state, fn(op_number, state) ->
           event = get_random_event()
           run(event, op_number, state)
         end)
@@ -209,7 +209,7 @@ defmodule AntidoteMetricsScript do
     {:ok, file} = File.open("#{@folder}payload.dat", [:append])
     Stream.zip(ccrdt_payloads, crdt_payloads)
     |> Enum.reduce(1, fn({m1,m2}, acc) ->
-      line = "#{acc * @ops_per_metric}\t#{m1}\t#{m2}\n"
+      line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
       IO.binwrite(file, line)
       Logger.info(line)
     end)
@@ -219,7 +219,7 @@ defmodule AntidoteMetricsScript do
     {:ok, file} = File.open("#{@folder}size.dat", [:append])
     Stream.zip(ccrdt_sizes, crdt_sizes)
     |> Enum.reduce(1, fn({m1,m2}, acc) ->
-      line = "#{acc * @ops_per_metric}\t#{m1}\t#{m2}\n"
+      line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
       IO.binwrite(file, line)
       Logger.info(line)
     end)
