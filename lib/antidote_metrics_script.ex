@@ -23,7 +23,9 @@ defmodule AntidoteMetricsScript do
 
   def main(_args \\ []) do
     targets = ['antidote1@127.0.0.1', 'antidote2@127.0.0.1', 'antidote3@127.0.0.1', 'antidote4@127.0.0.1', 'antidote5@127.0.0.1']
+    |> Enum.take(@nodes)
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
+
     num_players = 25000
 
     initial_states = Enum.map(targets, fn(t) ->
@@ -131,7 +133,7 @@ defmodule AntidoteMetricsScript do
   # wraps erlang rpc call function, if there's an error it logs the error and exits the application
   defp rpc(target, module, function, args) do
     case :rpc.call(target, module, function, args) do
-      {:ok, result, time} -> {result, time}
+      {:ok, result, _time} -> {result, :ignore}
       {:ok, time} -> time
       {:error, reason} ->
         Logger.error("Error #{inspect([reason])}")
@@ -142,6 +144,8 @@ defmodule AntidoteMetricsScript do
       {:badrpc, reason} ->
         Logger.error("Bad RPC #{inspect([reason])}")
         graceful_shutdown()
+      {result1, result2} ->
+        {result1, result2}
     end
   end
 
