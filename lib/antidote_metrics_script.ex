@@ -76,7 +76,7 @@ defmodule AntidoteMetricsScript do
     target = state.target
     object_ccrdt = {key, :antidote_ccrdt_topk_with_deletes, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
-    {[result], _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt]])
+    {[result], time} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt]])
     {_, internal, _, _} = result
     player_id = case Map.keys(internal) do
       [] -> nil
@@ -92,7 +92,7 @@ defmodule AntidoteMetricsScript do
 
       updates = [{object_ccrdt, :del, player_id}, {object_crdt, :remove_all, elements}]
 
-      time = rpc(target, :antidote, :update_objects, [state.last_commit, [], updates])
+      time = rpc(target, :antidote, :update_objects, [time, [], updates])
 
       {ccrdt_metrics, crdt_metrics} = update_metrics(op_number, state, object_ccrdt, object_crdt)
 
