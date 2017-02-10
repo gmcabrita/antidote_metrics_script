@@ -90,7 +90,7 @@ defmodule AntidoteMetricsScript do
       state
     else
       elements = Map.get(internal, player_id)
-      |> :sets.to_list()
+      |> :ordsets.to_list()
       |> Enum.map(fn({id, score, _}) -> {id, score} end)
 
       updates = [{object_ccrdt, :del, player_id}, {object_crdt, :remove_all, elements}]
@@ -172,8 +172,6 @@ defmodule AntidoteMetricsScript do
     {res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
     [value_ccrdt, value_crdt] = res
     {sizes_ccrdt, sizes_crdt} = {get_size(value_ccrdt), get_size(value_crdt)}
-
-    Logger.info()
 
     # get total message payloads
     {ccrdt_payload, crdt_payload} = rpc(state.target, :antidote, :message_payloads, [])
