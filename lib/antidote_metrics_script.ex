@@ -8,8 +8,8 @@ defmodule AntidoteMetricsScript do
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
   @nodes 5
-  @ops_per_metric div(@num_operations, 5)
-  @ops_per_metric_per_node div(@ops_per_metric, @nodes)
+  @ops_per_metric div(@num_operations, @nodes)
+  @ops_per_metric_per_node div(@ops_per_metric, 5)
 
   defmodule State do
     defstruct [
@@ -179,8 +179,7 @@ defmodule AntidoteMetricsScript do
   end
 
   defp store_metrics(states) do
-    Logger.info(state)
-    empty = [{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}]
+    empty = [0, 0, 0, 0, 0]
     {ccrdt_sizes, ccrdt_payloads, crdt_sizes, crdt_payloads} = states
     |> Stream.map(fn(state) ->
       {ccs, ccp} = Enum.reduce(state.ccrdt_metrics, {[], []}, fn(m, {s, p}) ->
