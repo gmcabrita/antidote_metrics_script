@@ -3,11 +3,12 @@ defmodule AntidoteMetricsScript do
   require Logger
 
   @folder "results/"
-  @num_operations 10000
+  @num_operations 3000
   @cookie :antidote
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
-  @nodes 5
+  @replicas 3
+  @nodes 3
   @ops_per_metric div(@num_operations, @nodes)
   @ops_per_metric_per_node div(@ops_per_metric, 5)
 
@@ -172,6 +173,8 @@ defmodule AntidoteMetricsScript do
     [value_ccrdt, value_crdt] = res
     {sizes_ccrdt, sizes_crdt} = {get_size(value_ccrdt), get_size(value_crdt)}
 
+    Logger.info()
+
     # get total message payloads
     {ccrdt_payload, crdt_payload} = rpc(state.target, :antidote, :message_payloads, [])
 
@@ -200,8 +203,8 @@ defmodule AntidoteMetricsScript do
       {ccsr, ccpr, csr, cpr}
     end)
 
-    ccrdt_sizes = Enum.map(ccrdt_sizes, fn (i) -> i / 5 end)
-    crdt_sizes = Enum.map(crdt_sizes, fn (i) -> i / 5 end)
+    ccrdt_sizes = Enum.map(ccrdt_sizes, fn (i) -> i / @replicas end)
+    crdt_sizes = Enum.map(crdt_sizes, fn (i) -> i / @replicas end)
 
     File.mkdir_p(@folder)
 
