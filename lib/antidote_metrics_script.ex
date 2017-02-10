@@ -212,6 +212,8 @@ defmodule AntidoteMetricsScript do
       line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
       IO.binwrite(file, line)
       Logger.info(line)
+
+      acc + 1
     end)
     File.close(file)
 
@@ -222,6 +224,8 @@ defmodule AntidoteMetricsScript do
       line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
       IO.binwrite(file, line)
       Logger.info(line)
+
+      acc + 1
     end)
     File.close(file)
   end
