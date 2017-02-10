@@ -2,7 +2,7 @@ defmodule AntidoteMetricsScript do
 
   require Logger
 
-  @folder "results"
+  @folder "results/"
   @num_operations 10000
   @cookie :antidote
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
