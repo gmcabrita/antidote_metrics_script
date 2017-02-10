@@ -164,7 +164,7 @@ defmodule AntidoteMetricsScript do
   # retrieves metrics
   defp get_metrics(state, object_ccrdt, object_crdt) do
     # get average replica sizes
-    {:ok, res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
+    {res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
     [value_ccrdt, value_crdt] = res
     {sizes_ccrdt, sizes_crdt} = {get_size(value_ccrdt), get_size(value_crdt)}
 
