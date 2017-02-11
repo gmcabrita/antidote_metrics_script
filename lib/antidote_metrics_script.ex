@@ -158,7 +158,7 @@ defmodule AntidoteMetricsScript do
   defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {_, hidden, _, _, _}) do
     hidden
     |> :maps.values()
-    |> Enum.reduce(0, fn(x, acc) -> acc + :sets.size(x) end)
+    |> Enum.reduce(0, fn(x, acc) -> acc + :gb_sets.size(x) end)
   end
 
   defp get_replica_size(:antidote_crdt_orset, orset) do
