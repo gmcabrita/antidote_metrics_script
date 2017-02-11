@@ -80,7 +80,7 @@ defmodule AntidoteMetricsScript do
     object_ccrdt = {key, :antidote_ccrdt_topk_with_deletes, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
     {[result], time} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt]])
-    {_, internal, _, _} = result
+    {_, internal, _, _, _} = result
     player_id = case Map.keys(internal) do
       [] -> nil
       list -> Enum.random(list)
