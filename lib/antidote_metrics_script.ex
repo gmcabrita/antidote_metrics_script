@@ -90,7 +90,7 @@ defmodule AntidoteMetricsScript do
       state
     else
       elements = Map.get(internal, player_id)
-      |> :sets.to_list()
+      |> :gb_sets.to_list()
       |> Enum.map(fn({id, score, _}) -> {id, score} end)
 
       updates = [{object_ccrdt, :del, player_id}, {object_crdt, :remove_all, elements}]
@@ -155,7 +155,7 @@ defmodule AntidoteMetricsScript do
     byte_size(:erlang.term_to_binary(object))
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {visible, hidden, deletes, _}) do
+  defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {_, hidden, _, _, _}) do
     hidden
     |> :maps.values()
     |> Enum.reduce(0, fn(x, acc) -> acc + :sets.size(x) end)
@@ -165,7 +165,7 @@ defmodule AntidoteMetricsScript do
     :orddict.size(orset)
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk, {top, _}) do
+  defp get_replica_size(:antidote_ccrdt_topk, {top, _, _}) do
     :maps.size(top)
   end
 
@@ -189,7 +189,7 @@ defmodule AntidoteMetricsScript do
     # get average replica sizes
     {res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
     [value_ccrdt, value_crdt] = res
-    {sizes_ccrdt, sizes_crdt} = {get_replica_size(type_cc, value_ccrdt), get_replica_size(typec, value_crdt)}
+    {sizes_ccrdt, sizes_crdt} = {get_replica_size(typecc, value_ccrdt), get_replica_size(typec, value_crdt)}
 
     # get total message payloads
     {ccrdt_payload, crdt_payload} = rpc(state.target, :antidote, :message_payloads, [])
