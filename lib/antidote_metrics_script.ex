@@ -3,12 +3,12 @@ defmodule AntidoteMetricsScript do
   require Logger
 
   @folder "results/"
-  @num_operations 3000
+  @num_operations 100000
   @cookie :antidote
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
-  @replicas 3
-  @nodes 3
+  @replicas 5
+  @nodes 5
   @ops_per_metric div(@num_operations, @nodes)
   @ops_per_metric_per_node div(@ops_per_metric, 5)
 
@@ -23,7 +23,11 @@ defmodule AntidoteMetricsScript do
   end
 
   def main(_args \\ []) do
-    targets = ['antidote1@127.0.0.1', 'antidote2@127.0.0.1', 'antidote3@127.0.0.1', 'antidote4@127.0.0.1', 'antidote5@127.0.0.1']
+    targets = ['antidote1@127.0.0.1',
+               'antidote2@127.0.0.1',
+               'antidote3@127.0.0.1',
+               'antidote4@127.0.0.1',
+               'antidote5@127.0.0.1']
     |> Enum.take(@nodes)
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
 
