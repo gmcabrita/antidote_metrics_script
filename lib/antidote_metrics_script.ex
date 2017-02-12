@@ -109,16 +109,55 @@ defmodule AntidoteMetricsScript do
     player_id = :rand.uniform(state.num_players)
     score = :rand.uniform(1000000000)
     object_ccrdt = {key, :antidote_ccrdt_topk, :topk_ccrdt}
-    object_crdt = {key, :antidote_crdt_gset, :topk_crdt}
+    object_crdt = {key, :antidote_crdt_orset, :topk_crdt}
     element = {player_id, score}
-    updates = [{object_ccrdt, :add, element}, {object_crdt, :add, element}]
+    element_crdt = {score, player_id} # inverted order so we get sorting in :gb_sets for free
 
-    # ignore result of the rpc, if there's some error the program will exit
-    time = rpc(target, :antidote, :update_objects, [state.last_commit, [], updates])
+    {[orset], _} = rpc(target, :antidote, :read_objects, [state.last_commit, [], [object_crdt]])
+    set = :gb_sets.from_list(:orddict.fetch_keys(orset))
+
+    maxk = :gb_sets.add(element_crdt, set) |> max_k()
+
+    # this essentially does the computation for the or-set top-k on the "client" side
+    if :gb_sets.is_member(element_crdt, maxk) do
+      rem = :gb_sets.difference(set, maxk) |> :gb_sets.to_list()
+
+      rpc(target,
+          :antidote,
+          :update_objects,
+          [state.last_commit,
+           [],
+           [{object_ccrdt, :add, element},
+            {object_crdt, :add, element_crdt},
+            {object_crdt, :remove_all, rem}]])
+    else
+      rpc(target, :antidote, :update_objects, [state.last_commit, [], [{object_ccrdt, :add, element}]])
+    end
 
     {ccrdt_metrics, crdt_metrics} = update_metrics(op_number, state, object_ccrdt, object_crdt)
 
-    %{state | ccrdt_metrics: ccrdt_metrics, crdt_metrics: crdt_metrics, last_commit: time}
+    %{state | ccrdt_metrics: ccrdt_metrics, crdt_metrics: crdt_metrics}
+  end
+
+  defp max_k(set) do
+    {top, _, _} = set
+    |> :gb_sets.to_list()
+    |> Enum.reverse()
+    |> Enum.reduce_while({:gb_sets.new(), MapSet.new(), 100}, fn({_, id, _} = e, {top, cache, remaining_k}) ->
+      {t, c, k} = if MapSet.member?(cache, id) do
+        {top, cache, remaining_k}
+      else
+        {:gb_sets.add(e, top), MapSet.put(cache, id), remaining_k - 1}
+      end
+
+      if k > 0 do
+        {:cont, {t, c, k}}
+      else
+        {:halt, {t, c, k}}
+      end
+    end)
+
+    top
   end
 
   # generates a random event from a weighted list of events
@@ -155,22 +194,34 @@ defmodule AntidoteMetricsScript do
     byte_size(:erlang.term_to_binary(object))
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {_, hidden, _, _, _}) do
+  defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {visible, hidden, deletes, min, size}) do
+    fair_hidden = hidden
+    |> :maps.values()
+    |> Enum.reduce(0, fn(x, acc) -> :gb_sets.union(x, acc) end)
+
+    get_size({visible, fair_hidden, deletes, min, size})
+  end
+
+  defp get_replica_size(:antidote_crdt_orset, orset) do
+    get_size(orset)
+  end
+
+  defp get_replica_size(:antidote_ccrdt_topk, topk) do
+    get_size(topk)
+  end
+
+  defp get_num_elements(:antidote_ccrdt_topk_with_deletes, {_, hidden, _, _, _}) do
     hidden
     |> :maps.values()
     |> Enum.reduce(0, fn(x, acc) -> acc + :gb_sets.size(x) end)
   end
 
-  defp get_replica_size(:antidote_crdt_orset, orset) do
+  defp get_num_elements(:antidote_crdt_orset, orset) do
     :orddict.size(orset)
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk, {top, _, _}) do
+  defp get_num_elements(:antidote_ccrdt_topk, {top, _, _}) do
     :maps.size(top)
-  end
-
-  defp get_replica_size(:antidote_crdt_gset, set) do
-    :ordsets.size(set)
   end
 
   # checks if metrics need to be updateds given the current op_number
@@ -189,38 +240,43 @@ defmodule AntidoteMetricsScript do
     # get average replica sizes
     {res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
     [value_ccrdt, value_crdt] = res
+    {num_ccrdt, num_crdt} = {get_num_elements(typecc, value_ccrdt), get_num_elements(typec, value_crdt)}
     {sizes_ccrdt, sizes_crdt} = {get_replica_size(typecc, value_ccrdt), get_replica_size(typec, value_crdt)}
 
     # get total message payloads
     {ccrdt_payload, crdt_payload} = rpc(state.target, :antidote, :message_payloads, [])
 
-    {%{size: sizes_ccrdt, payload: ccrdt_payload}, %{size: sizes_crdt, payload: crdt_payload}}
+    {%{size: sizes_ccrdt, payload: ccrdt_payload, num: num_ccrdt}, %{size: sizes_crdt, payload: crdt_payload, num: num_crdt}}
   end
 
   defp store_metrics(states) do
     empty = [0, 0, 0, 0, 0]
-    {ccrdt_sizes, ccrdt_payloads, crdt_sizes, crdt_payloads} = states
+    {ccrdt_sizes, ccrdt_payloads, ccrdt_num, crdt_sizes, crdt_payloads, crdt_num} = states
     |> Stream.map(fn(state) ->
-      {ccs, ccp} = Enum.reduce(state.ccrdt_metrics, {[], []}, fn(m, {s, p}) ->
-        {s ++ [m.size], p ++ [m.payload]}
+      {ccs, ccp, ccn} = Enum.reduce(state.ccrdt_metrics, {[], [], []}, fn(m, {s, p, n}) ->
+        {s ++ [m.size], p ++ [m.payload], n ++ [m.num]}
       end)
 
-      {cs, cp} = Enum.reduce(state.crdt_metrics, {[], []}, fn(m, {s, p}) ->
-        {s ++ [m.size], p ++ [m.payload]}
+      {cs, cp, cn} = Enum.reduce(state.crdt_metrics, {[], [], []}, fn(m, {s, p, n}) ->
+        {s ++ [m.size], p ++ [m.payload], n ++ [m.num]}
       end)
 
-      {ccs, ccp, cs, cp}
+      {ccs, ccp, ccn, cs, cp, cn}
     end)
-    |> Enum.reduce({empty, empty, empty, empty}, fn ({ccs, ccp, cs, cp}, {ccsa, ccpa, csa, cpa}) ->
+    |> Enum.reduce({empty, empty, empty, empty}, fn ({ccs, ccp, ccn, cs, cp, cn}, {ccsa, ccpa, ccna, csa, cpa, cna}) ->
       ccsr = Stream.zip(ccs, ccsa) |> Enum.map(fn({i,j}) -> i + j end)
       ccpr = Stream.zip(ccp, ccpa) |> Enum.map(fn({i,j}) -> i + j end)
+      ccnr = Stream.zip(ccn, ccna) |> Enum.map(fn({i,j}) -> i + j end)
       csr = Stream.zip(cs, csa) |> Enum.map(fn({i,j}) -> i + j end)
       cpr = Stream.zip(cp, cpa) |> Enum.map(fn({i,j}) -> i + j end)
-      {ccsr, ccpr, csr, cpr}
+      cnr = Stream.zip(cn, cna) |> Enum.map(fn({i,j}) -> i + j end)
+      {ccsr, ccpr, ccnr, csr, cpr, cnr}
     end)
 
     ccrdt_sizes = Enum.map(ccrdt_sizes, fn (i) -> i / @replicas end)
     crdt_sizes = Enum.map(crdt_sizes, fn (i) -> i / @replicas end)
+    ccrdt_num = Enum.map(ccrdt_num, fn (i) -> i / @replicas end)
+    crdt_num = Enum.map(crdt_num, fn (i) -> i / @replicas end)
 
     File.mkdir_p(@folder)
 
@@ -239,6 +295,18 @@ defmodule AntidoteMetricsScript do
     Logger.info("Average replica sizes:")
     {:ok, file} = File.open("#{@folder}size.dat", [:append])
     Stream.zip(ccrdt_sizes, crdt_sizes)
+    |> Enum.reduce(1, fn({m1,m2}, acc) ->
+      line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
+      IO.binwrite(file, line)
+      Logger.info(line)
+
+      acc + 1
+    end)
+    File.close(file)
+
+    Logger.info("Average # elements per:")
+    {:ok, file} = File.open("#{@folder}nums.dat", [:append])
+    Stream.zip(ccrdt_num, crdt_num)
     |> Enum.reduce(1, fn({m1,m2}, acc) ->
       line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
       IO.binwrite(file, line)
