@@ -143,7 +143,7 @@ defmodule AntidoteMetricsScript do
     {top, _, _} = set
     |> :gb_sets.to_list()
     |> Enum.reverse()
-    |> Enum.reduce_while({:gb_sets.new(), MapSet.new(), 100}, fn({_, id, _} = e, {top, cache, remaining_k}) ->
+    |> Enum.reduce_while({:gb_sets.new(), MapSet.new(), 100}, fn({_, id} = e, {top, cache, remaining_k}) ->
       {t, c, k} = if MapSet.member?(cache, id) do
         {top, cache, remaining_k}
       else
