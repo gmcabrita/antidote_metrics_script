@@ -3,7 +3,7 @@ defmodule AntidoteMetricsScript do
   require Logger
 
   @folder "results/"
-  @num_operations 100000
+  @num_operations 50000
   @cookie :antidote
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
@@ -15,7 +15,7 @@ defmodule AntidoteMetricsScript do
   defmodule State do
     defstruct [
       target: :'antidote1@127.0.0.1',
-      num_players: 25000,
+      num_players: 10000,
       ccrdt_metrics: [],
       crdt_metrics: [],
       last_commit: :ignore
@@ -23,17 +23,20 @@ defmodule AntidoteMetricsScript do
   end
 
   def main(_args \\ []) do
-    targets = ['antidote1@127.0.0.1',
-               'antidote2@127.0.0.1',
-               'antidote3@127.0.0.1',
-               'antidote4@127.0.0.1',
-               'antidote5@127.0.0.1']
+    targets = ['antidote@34.249.21.69',
+               'antidote@34.250.93.206',
+               'antidote@34.250.160.120',
+               'antidote@34.249.190.136',
+               'antidote@34.250.172.226']
     |> Enum.take(@nodes)
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
 
-    num_players = 25000
+    num_players = 10000
 
-    initial_states = Enum.map(targets, fn(t) ->
+    initial_states = targets
+    |> Stream.cycle()
+    |> Stream.take(@nodes)
+    |> Enum.map(fn(t) ->
       %State{target: t, num_players: num_players}
     end)
 
@@ -65,7 +68,7 @@ defmodule AntidoteMetricsScript do
     key = :topkd
     target = state.target
     player_id = :rand.uniform(state.num_players)
-    score = :rand.uniform(1000000000)
+    score = :rand.uniform(250000)
     object_ccrdt = {key, :antidote_ccrdt_topk_with_deletes, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
     element = {player_id, score}
@@ -111,7 +114,7 @@ defmodule AntidoteMetricsScript do
     key = :topk
     target = state.target
     player_id = :rand.uniform(state.num_players)
-    score = :rand.uniform(1000000000)
+    score = :rand.uniform(250000)
     object_ccrdt = {key, :antidote_ccrdt_topk, :topk_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topk_crdt}
     element = {player_id, score}
@@ -201,7 +204,7 @@ defmodule AntidoteMetricsScript do
   defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {visible, hidden, deletes, min, size}) do
     fair_hidden = hidden
     |> :maps.values()
-    |> Enum.reduce(0, fn(x, acc) -> :gb_sets.union(x, acc) end)
+    |> Enum.reduce(:gb_sets.new(), fn(x, acc) -> :gb_sets.union(x, acc) end)
 
     get_size({visible, fair_hidden, deletes, min, size})
   end
@@ -230,8 +233,9 @@ defmodule AntidoteMetricsScript do
 
   # checks if metrics need to be updateds given the current op_number
   defp update_metrics(op_number, state, object_ccrdt, object_crdt) do
-    if rem(op_number + 1, 100) == 0, do: Logger.info("Op number: #{op_number + 1}")
+    if rem(op_number + 1, 10) == 0, do: Logger.info("Currently at #{op_number+1}")
     if rem(op_number + 1, @ops_per_metric_per_node) == 0 do
+      Logger.info("Got metrics @ #{op_number + 1}")
       {ccrdt, crdt} = get_metrics(state, object_ccrdt, object_crdt)
       {state.ccrdt_metrics ++ [ccrdt], state.crdt_metrics ++ [crdt]}
     else
@@ -267,7 +271,7 @@ defmodule AntidoteMetricsScript do
 
       {ccs, ccp, ccn, cs, cp, cn}
     end)
-    |> Enum.reduce({empty, empty, empty, empty}, fn ({ccs, ccp, ccn, cs, cp, cn}, {ccsa, ccpa, ccna, csa, cpa, cna}) ->
+    |> Enum.reduce({empty, empty, empty, empty, empty, empty}, fn ({ccs, ccp, ccn, cs, cp, cn}, {ccsa, ccpa, ccna, csa, cpa, cna}) ->
       ccsr = Stream.zip(ccs, ccsa) |> Enum.map(fn({i,j}) -> i + j end)
       ccpr = Stream.zip(ccp, ccpa) |> Enum.map(fn({i,j}) -> i + j end)
       ccnr = Stream.zip(ccn, ccna) |> Enum.map(fn({i,j}) -> i + j end)
