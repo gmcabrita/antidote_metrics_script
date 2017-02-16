@@ -69,7 +69,7 @@ defmodule AntidoteMetricsScript do
     target = state.target
     player_id = :rand.uniform(state.num_players)
     score = :rand.uniform(250000)
-    object_ccrdt = {key, :antidote_ccrdt_topk_with_deletes, :topkd_ccrdt}
+    object_ccrdt = {key, :antidote_ccrdt_topk_rmv, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
     element = {player_id, score}
     updates = [{object_ccrdt, :add, element}, {object_crdt, :add, element}]
@@ -84,23 +84,22 @@ defmodule AntidoteMetricsScript do
   def run(:topkd_del, op_number, state) do
     key = :topkd
     target = state.target
-    object_ccrdt = {key, :antidote_ccrdt_topk_with_deletes, :topkd_ccrdt}
+    object_ccrdt = {key, :antidote_ccrdt_topk_rmv, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
-    {[result], time} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt]])
-    {_, internal, _, _, _} = result
-    player_id = case Map.keys(internal) do
+    {[result], time} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_crdt]])
+    element = case result do
       [] -> nil
       list -> Enum.random(list)
     end
 
-    if is_nil(player_id) do
+    if is_nil(element) do
       state
     else
-      elements = Map.get(internal, player_id)
-      |> :gb_sets.to_list()
-      |> Enum.map(fn({id, score, _}) -> {id, score} end)
+      {element_id, _} = element
+      elements = result
+      |> Enum.filter(fn({id, _}) -> id == element_id end)
 
-      updates = [{object_ccrdt, :del, player_id}, {object_crdt, :remove_all, elements}]
+      updates = [{object_ccrdt, :rmv, element_id}, {object_crdt, :remove_all, elements}]
 
       time = rpc(target, :antidote, :update_objects, [time, [], updates])
 
@@ -201,12 +200,8 @@ defmodule AntidoteMetricsScript do
     byte_size(:erlang.term_to_binary(object))
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk_with_deletes, {visible, hidden, deletes, min, size}) do
-    fair_hidden = hidden
-    |> :maps.values()
-    |> Enum.reduce(:gb_sets.new(), fn(x, acc) -> :gb_sets.union(x, acc) end)
-
-    get_size({visible, fair_hidden, deletes, min, size})
+  defp get_replica_size(:antidote_ccrdt_topk_rmv, topk) do
+    get_size(topk)
   end
 
   defp get_replica_size(:antidote_crdt_orset, orset) do
@@ -217,10 +212,8 @@ defmodule AntidoteMetricsScript do
     get_size(topk)
   end
 
-  defp get_num_elements(:antidote_ccrdt_topk_with_deletes, {_, hidden, _, _, _}) do
-    hidden
-    |> :maps.values()
-    |> Enum.reduce(0, fn(x, acc) -> acc + :gb_sets.size(x) end)
+  defp get_num_elements(:antidote_ccrdt_topk_rmv, {obs, masked, _, _, _, _}) do
+    :maps.size(obs) + :maps.size(masked)
   end
 
   defp get_num_elements(:antidote_crdt_orset, orset) do
