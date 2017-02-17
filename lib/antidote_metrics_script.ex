@@ -11,6 +11,7 @@ defmodule AntidoteMetricsScript do
   @nodes 5
   @ops_per_metric div(@num_operations, @nodes)
   @ops_per_metric_per_node div(@ops_per_metric, 5)
+  @rpc_timeout 1000*1000
 
   defmodule State do
     defstruct [
@@ -23,11 +24,11 @@ defmodule AntidoteMetricsScript do
   end
 
   def main(_args \\ []) do
-    targets = ['antidote@34.249.21.69',
-               'antidote@34.250.93.206',
-               'antidote@34.250.160.120',
-               'antidote@34.249.190.136',
-               'antidote@34.250.172.226']
+    targets = ['antidote@34.250.55.248',
+               'antidote@34.250.65.178',
+               'antidote@34.248.107.89',
+               'antidote@34.250.244.249',
+               'antidote@34.250.249.159']
     |> Enum.take(@nodes)
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
 
@@ -87,6 +88,7 @@ defmodule AntidoteMetricsScript do
     object_ccrdt = {key, :antidote_ccrdt_topk_rmv, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
     {[result], time} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_crdt]])
+    result = :orddict.fetch_keys(result)
     element = case result do
       [] -> nil
       list -> Enum.random(list)
@@ -178,7 +180,7 @@ defmodule AntidoteMetricsScript do
 
   # wraps erlang rpc call function, if there's an error it logs the error and exits the application
   defp rpc(target, module, function, args) do
-    case :rpc.call(target, module, function, args) do
+    case :rpc.call(target, module, function, args, @rpc_timeout) do
       {:ok, result, _time} -> {result, :ignore}
       {:ok, time} -> time
       {:error, reason} ->
