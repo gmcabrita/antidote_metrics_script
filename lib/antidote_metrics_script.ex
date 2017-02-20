@@ -57,7 +57,6 @@ defmodule AntidoteMetricsScript do
     Enum.map(states, fn(s) -> Task.await(s, :infinity) end)
 
     :timer.sleep(10000)
-    graceful_shutdown()
   end
 
   def run(:topkd_add, _op_number, state) do
@@ -186,11 +185,6 @@ defmodule AntidoteMetricsScript do
 
   defp my_name() do
     :erlang.list_to_atom('metrics' ++ '@127.0.0.1')
-  end
-
-  defp graceful_shutdown() do
-    Logger.flush
-    System.halt(0)
   end
 
 end

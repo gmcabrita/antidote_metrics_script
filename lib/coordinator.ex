@@ -29,6 +29,7 @@ defmodule Coordinator do
     if rem(ops, state[:ops_per_metric]) == 0 do
       if ops == state[:total] do
         get_metrics(ops, state[:mode], state[:servers])
+        graceful_shutdown()
       else
         spawn(fn -> get_metrics(ops, state[:mode], state[:servers]) end)
       end
@@ -138,4 +139,10 @@ defmodule Coordinator do
     Logger.info(line)
     File.close(file)
   end
+
+  defp graceful_shutdown() do
+    Logger.flush
+    System.halt(0)
+  end
+
 end
