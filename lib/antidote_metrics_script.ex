@@ -2,24 +2,18 @@ defmodule AntidoteMetricsScript do
 
   require Logger
 
-  @folder "results/"
   @num_operations 50000
   @cookie :antidote
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
-  @replicas 5
   @nodes 5
-  @ops_per_metric div(@num_operations, @nodes)
-  @ops_per_metric_per_node div(@ops_per_metric, 5)
+  @ops_per_metric 10000
   @rpc_timeout 1000*1000
 
   defmodule State do
     defstruct [
       target: :'antidote1@127.0.0.1',
-      num_players: 10000,
-      ccrdt_metrics: [],
-      crdt_metrics: [],
-      last_commit: :ignore
+      num_players: 10000
     ]
   end
 
@@ -29,7 +23,6 @@ defmodule AntidoteMetricsScript do
                'antidote@34.248.119.254',
                'antidote@34.250.125.48',
                'antidote@34.248.131.52']
-    |> Enum.take(@nodes)
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
 
     num_players = 10000
@@ -56,16 +49,18 @@ defmodule AntidoteMetricsScript do
         Enum.reduce(0..div(@num_operations, @nodes), initial_state, fn(op_number, state) ->
           event = get_random_event()
           run(event, op_number, state)
+          Coordinator.inc()
         end)
       end)
     end)
 
-    final_states = Enum.map(states, fn(s) -> Task.await(s, :infinity) end)
+    Enum.map(states, fn(s) -> Task.await(s, :infinity) end)
 
-    store_metrics(final_states)
+    :timer.sleep(10000)
+    graceful_shutdown()
   end
 
-  def run(:topkd_add, op_number, state) do
+  def run(:topkd_add, _op_number, state) do
     key = :topkd
     target = state.target
     player_id = :rand.uniform(state.num_players)
@@ -75,43 +70,37 @@ defmodule AntidoteMetricsScript do
     element = {player_id, score}
     updates = [{object_ccrdt, :add, element}, {object_crdt, :add, element}]
 
-    time = rpc(target, :antidote, :update_objects, [state.last_commit, [], updates])
+    rpc(target, :antidote, :update_objects, [:ignore, [], updates])
 
-    {ccrdt_metrics, crdt_metrics} = update_metrics(op_number, state, object_ccrdt, object_crdt)
-
-    %{state | ccrdt_metrics: ccrdt_metrics, crdt_metrics: crdt_metrics, last_commit: time}
+    state
   end
 
-  def run(:topkd_del, op_number, state) do
+  def run(:topkd_del, _op_number, state) do
     key = :topkd
     target = state.target
     object_ccrdt = {key, :antidote_ccrdt_topk_rmv, :topkd_ccrdt}
     object_crdt = {key, :antidote_crdt_orset, :topkd_crdt}
-    {[result], time} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_crdt]])
+    {[result], _} = rpc(state.target, :antidote, :read_objects, [:ignore, [], [object_crdt]])
     result = :orddict.fetch_keys(result)
     element = case result do
       [] -> nil
       list -> Enum.random(list)
     end
 
-    if is_nil(element) do
-      state
-    else
+    if !is_nil(element) do
       {element_id, _} = element
       elements = result
       |> Enum.filter(fn({id, _}) -> id == element_id end)
 
       updates = [{object_ccrdt, :rmv, element_id}, {object_crdt, :remove_all, elements}]
 
-      time = rpc(target, :antidote, :update_objects, [time, [], updates])
-
-      {ccrdt_metrics, crdt_metrics} = update_metrics(op_number, state, object_ccrdt, object_crdt)
-
-      %{state | ccrdt_metrics: ccrdt_metrics, crdt_metrics: crdt_metrics, last_commit: time}
+      rpc(target, :antidote, :update_objects, [:ignore, [], updates])
     end
+
+    state
   end
 
-  def run(:topk_add, op_number, state) do
+  def run(:topk_add, _op_number, state) do
     key = :topk
     target = state.target
     player_id = :rand.uniform(state.num_players)
@@ -133,18 +122,16 @@ defmodule AntidoteMetricsScript do
       rpc(target,
           :antidote,
           :update_objects,
-          [state.last_commit,
+          [:ignore,
            [],
            [{object_ccrdt, :add, element},
             {object_crdt, :add, element_crdt},
             {object_crdt, :remove_all, rem}]])
     else
-      rpc(target, :antidote, :update_objects, [state.last_commit, [], [{object_ccrdt, :add, element}]])
+      rpc(target, :antidote, :update_objects, [:ignore, [], [{object_ccrdt, :add, element}]])
     end
 
-    {ccrdt_metrics, crdt_metrics} = update_metrics(op_number, state, object_ccrdt, object_crdt)
-
-    %{state | ccrdt_metrics: ccrdt_metrics, crdt_metrics: crdt_metrics}
+    state
   end
 
   defp max_k(set) do
@@ -179,7 +166,7 @@ defmodule AntidoteMetricsScript do
   end
 
   # wraps erlang rpc call function, if there's an error it logs the error and exits the application
-  defp rpc(target, module, function, args) do
+  def rpc(target, module, function, args) do
     case :rpc.call(target, module, function, args, @rpc_timeout) do
       {:ok, result, _time} -> {result, :ignore}
       {:ok, time} -> time
@@ -195,136 +182,6 @@ defmodule AntidoteMetricsScript do
       {result1, result2} ->
         {result1, result2}
     end
-  end
-
-  # returns the size of an object
-  defp get_size(object) do
-    byte_size(:erlang.term_to_binary(object))
-  end
-
-  defp get_replica_size(:antidote_ccrdt_topk, topk) do
-    get_size(topk)
-  end
-
-  defp get_replica_size(:antidote_crdt_orset, orset) do
-    get_size(orset)
-  end
-
-  defp get_replica_size(:antidote_ccrdt_topk_rmv, {_, all, removals, vc, min, size}) do
-    all = all
-    |> :maps.values()
-    |> Enum.reduce(:gb_sets.new(), fn(x, acc) -> :gb_sets.union(x, acc) end)
-
-    get_size({all, removals, vc, min, size})
-  end
-
-  defp get_num_elements(:antidote_ccrdt_topk_rmv, {_, all, _, _, _, _}) do
-    all = all
-    |> :maps.values()
-    |> Enum.reduce(:gb_sets.new(), fn(x, acc) -> :gb_sets.union(x, acc) end)
-    :gb_sets.size(all)
-  end
-
-  defp get_num_elements(:antidote_crdt_orset, orset) do
-    :orddict.size(orset)
-  end
-
-  defp get_num_elements(:antidote_ccrdt_topk, {top, _, _}) do
-    :maps.size(top)
-  end
-
-  # checks if metrics need to be updateds given the current op_number
-  defp update_metrics(op_number, state, object_ccrdt, object_crdt) do
-    if rem(op_number + 1, 10) == 0, do: Logger.info("Currently at #{op_number+1}")
-    if rem(op_number + 1, @ops_per_metric_per_node) == 0 do
-      Logger.info("Got metrics @ #{op_number + 1}")
-      {ccrdt, crdt} = get_metrics(state, object_ccrdt, object_crdt)
-      {state.ccrdt_metrics ++ [ccrdt], state.crdt_metrics ++ [crdt]}
-    else
-      {state.ccrdt_metrics, state.crdt_metrics}
-    end
-  end
-
-  # retrieves metrics
-  defp get_metrics(state, {_, typecc, _} = object_ccrdt, {_, typec, _} = object_crdt) do
-    # get average replica sizes
-    {res, _} = rpc(state.target, :antidote, :read_objects, [state.last_commit, [], [object_ccrdt, object_crdt]])
-    [value_ccrdt, value_crdt] = res
-    {num_ccrdt, num_crdt} = {get_num_elements(typecc, value_ccrdt), get_num_elements(typec, value_crdt)}
-    {sizes_ccrdt, sizes_crdt} = {get_replica_size(typecc, value_ccrdt), get_replica_size(typec, value_crdt)}
-
-    # get total message payloads
-    {ccrdt_payload, crdt_payload} = rpc(state.target, :antidote, :message_payloads, [])
-
-    {%{size: sizes_ccrdt, payload: ccrdt_payload, num: num_ccrdt}, %{size: sizes_crdt, payload: crdt_payload, num: num_crdt}}
-  end
-
-  defp store_metrics(states) do
-    empty = [0, 0, 0, 0, 0]
-    {ccrdt_sizes, ccrdt_payloads, ccrdt_num, crdt_sizes, crdt_payloads, crdt_num} = states
-    |> Stream.map(fn(state) ->
-      {ccs, ccp, ccn} = Enum.reduce(state.ccrdt_metrics, {[], [], []}, fn(m, {s, p, n}) ->
-        {s ++ [m.size], p ++ [m.payload], n ++ [m.num]}
-      end)
-
-      {cs, cp, cn} = Enum.reduce(state.crdt_metrics, {[], [], []}, fn(m, {s, p, n}) ->
-        {s ++ [m.size], p ++ [m.payload], n ++ [m.num]}
-      end)
-
-      {ccs, ccp, ccn, cs, cp, cn}
-    end)
-    |> Enum.reduce({empty, empty, empty, empty, empty, empty}, fn ({ccs, ccp, ccn, cs, cp, cn}, {ccsa, ccpa, ccna, csa, cpa, cna}) ->
-      ccsr = Stream.zip(ccs, ccsa) |> Enum.map(fn({i,j}) -> i + j end)
-      ccpr = Stream.zip(ccp, ccpa) |> Enum.map(fn({i,j}) -> i + j end)
-      ccnr = Stream.zip(ccn, ccna) |> Enum.map(fn({i,j}) -> i + j end)
-      csr = Stream.zip(cs, csa) |> Enum.map(fn({i,j}) -> i + j end)
-      cpr = Stream.zip(cp, cpa) |> Enum.map(fn({i,j}) -> i + j end)
-      cnr = Stream.zip(cn, cna) |> Enum.map(fn({i,j}) -> i + j end)
-      {ccsr, ccpr, ccnr, csr, cpr, cnr}
-    end)
-
-    ccrdt_sizes = Enum.map(ccrdt_sizes, fn (i) -> i / @replicas end)
-    crdt_sizes = Enum.map(crdt_sizes, fn (i) -> i / @replicas end)
-    ccrdt_num = Enum.map(ccrdt_num, fn (i) -> i / @replicas end)
-    crdt_num = Enum.map(crdt_num, fn (i) -> i / @replicas end)
-
-    File.mkdir_p(@folder)
-
-    Logger.info("Total message payloads:")
-    {:ok, file} = File.open("#{@folder}payload.dat", [:append])
-    Stream.zip(ccrdt_payloads, crdt_payloads)
-    |> Enum.reduce(1, fn({m1,m2}, acc) ->
-      line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
-      IO.binwrite(file, line)
-      Logger.info(line)
-
-      acc + 1
-    end)
-    File.close(file)
-
-    Logger.info("Average replica sizes:")
-    {:ok, file} = File.open("#{@folder}size.dat", [:append])
-    Stream.zip(ccrdt_sizes, crdt_sizes)
-    |> Enum.reduce(1, fn({m1,m2}, acc) ->
-      line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
-      IO.binwrite(file, line)
-      Logger.info(line)
-
-      acc + 1
-    end)
-    File.close(file)
-
-    Logger.info("Average # elements per:")
-    {:ok, file} = File.open("#{@folder}nums.dat", [:append])
-    Stream.zip(ccrdt_num, crdt_num)
-    |> Enum.reduce(1, fn({m1,m2}, acc) ->
-      line = "#{acc * @ops_per_metric_per_node * @nodes}\t#{m1}\t#{m2}\n"
-      IO.binwrite(file, line)
-      Logger.info(line)
-
-      acc + 1
-    end)
-    File.close(file)
   end
 
   defp my_name() do
