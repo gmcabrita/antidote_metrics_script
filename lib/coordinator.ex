@@ -122,22 +122,22 @@ defmodule Coordinator do
     {:ok, file} = File.open("#{@folder}payload.dat", [:append])
     line = "#{op_number}\t#{ccrdt_payloads}\t#{crdt_payloads}\n"
     IO.binwrite(file, line)
-    Logger.info(line)
     File.close(file)
+    Logger.info(line)
 
     Logger.info("Mean replica sizes:")
     {:ok, file} = File.open("#{@folder}size.dat", [:append])
     line = "#{op_number}\t#{ccrdt_sizes}\t#{crdt_sizes}\n"
     IO.binwrite(file, line)
-    Logger.info(line)
     File.close(file)
+    Logger.info(line)
 
     Logger.info("Mean # elements per replica:")
     {:ok, file} = File.open("#{@folder}nums.dat", [:append])
     line = "#{op_number}\t#{ccrdt_num}\t#{crdt_num}\n"
     IO.binwrite(file, line)
-    Logger.info(line)
     File.close(file)
+    Logger.info(line)
   end
 
   defp graceful_shutdown() do

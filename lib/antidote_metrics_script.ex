@@ -187,4 +187,9 @@ defmodule AntidoteMetricsScript do
     :erlang.list_to_atom('metrics' ++ '@127.0.0.1')
   end
 
+  defp graceful_shutdown() do
+    Logger.flush
+    System.halt(0)
+  end
+
 end
