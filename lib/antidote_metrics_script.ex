@@ -24,11 +24,11 @@ defmodule AntidoteMetricsScript do
   end
 
   def main(_args \\ []) do
-    targets = ['antidote@34.250.55.248',
-               'antidote@34.250.65.178',
-               'antidote@34.248.107.89',
-               'antidote@34.250.244.249',
-               'antidote@34.250.249.159']
+    targets = ['antidote@34.250.6.10',
+               'antidote@34.249.42.46',
+               'antidote@34.248.119.254',
+               'antidote@34.250.125.48',
+               'antidote@34.248.131.52']
     |> Enum.take(@nodes)
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
 
@@ -202,7 +202,7 @@ defmodule AntidoteMetricsScript do
     byte_size(:erlang.term_to_binary(object))
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk_rmv, topk) do
+  defp get_replica_size(:antidote_ccrdt_topk, topk) do
     get_size(topk)
   end
 
@@ -210,12 +210,19 @@ defmodule AntidoteMetricsScript do
     get_size(orset)
   end
 
-  defp get_replica_size(:antidote_ccrdt_topk, topk) do
-    get_size(topk)
+  defp get_replica_size(:antidote_ccrdt_topk_rmv, {_, all, removals, vc, min, size}) do
+    all = all
+    |> :maps.values()
+    |> Enum.reduce(:gb_sets.new(), fn(x, acc) -> :gb_sets.union(x, acc) end)
+
+    get_size({all, removals, vc, min, size})
   end
 
-  defp get_num_elements(:antidote_ccrdt_topk_rmv, {elems, _, _, _}) do
-    :gb_sets.size(elems)
+  defp get_num_elements(:antidote_ccrdt_topk_rmv, {_, all, _, _, _, _}) do
+    all = all
+    |> :maps.values()
+    |> Enum.reduce(:gb_sets.new(), fn(x, acc) -> :gb_sets.union(x, acc) end)
+    :gb_sets.size(all)
   end
 
   defp get_num_elements(:antidote_crdt_orset, orset) do
