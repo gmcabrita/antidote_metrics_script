@@ -23,15 +23,15 @@ defmodule Coordinator do
     {:ok, state}
   end
 
-  def handle_cast(:inc, _from, state) do
+  def handle_cast(:inc, state) do
     ops = state[:ops] + 1
-    if rem(ops, 1000) == 0, do: Logger.info("Currently at: #{ops}")
+    if rem(ops, 100) == 0, do: Logger.info("Currently at: #{ops}")
     if rem(ops, state[:ops_per_metric]) == 0 do
       if ops == state[:total] do
-        get_metrics(ops, state[:mode], state[:servers])
+        get_metrics(ops, state[:mode], state[:nodes])
         graceful_shutdown()
       else
-        spawn(fn -> get_metrics(ops, state[:mode], state[:servers]) end)
+        get_metrics(ops, state[:mode], state[:nodes])
       end
     end
     {:noreply, %{state | ops: ops}}

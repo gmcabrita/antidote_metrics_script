@@ -8,8 +8,8 @@ defmodule AntidoteMetricsScript do
   #@mode :topk
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
-  @nodes 5
-  @ops_per_metric 10000
+  @nodes 20
+  @ops_per_metric 5000
   @rpc_timeout 1000*1000
 
   defmodule State do
@@ -47,8 +47,9 @@ defmodule AntidoteMetricsScript do
       Task.async(fn ->
         Enum.reduce(0..div(@num_operations, @nodes), initial_state, fn(op_number, state) ->
           event = get_random_event()
-          run(event, op_number, state)
+          state = run(event, op_number, state)
           Coordinator.inc()
+          state
         end)
       end)
     end)
@@ -108,7 +109,7 @@ defmodule AntidoteMetricsScript do
     element = {player_id, score}
     element_crdt = {score, player_id} # inverted order so we get sorting in :gb_sets for free
 
-    {[orset], _} = rpc(target, :antidote, :read_objects, [state.last_commit, [], [object_crdt]])
+    {[orset], _} = rpc(target, :antidote, :read_objects, [:ignore, [], [object_crdt]])
     set = :gb_sets.from_list(:orddict.fetch_keys(orset))
 
     maxk = :gb_sets.add(element_crdt, set) |> max_k()
