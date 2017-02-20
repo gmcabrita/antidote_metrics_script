@@ -9,8 +9,8 @@ defmodule Coordinator do
 
   # API
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, 0, name: __MODULE__)
+  def start_link(state \\ %{ops: 0, total: 100000, ops_per_metric: 20000, mode: :topkd, nodes: []}) do
+    GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
 
   def inc() do
@@ -19,7 +19,7 @@ defmodule Coordinator do
 
   # Internals
 
-  def init(state \\ %{ops: 0, total: 100000, ops_per_metric: 20000, mode: :topkd, nodes: []}) do
+  def init(state) do
     {:ok, state}
   end
 

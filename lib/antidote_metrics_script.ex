@@ -4,6 +4,8 @@ defmodule AntidoteMetricsScript do
 
   @num_operations 50000
   @cookie :antidote
+  @mode :topkd
+  #@mode :topk
   @events [{:topkd_add, 95}, {:topkd_del, 100}]
   #@events [{:topk_add, 100}]
   @nodes 5
@@ -18,11 +20,7 @@ defmodule AntidoteMetricsScript do
   end
 
   def main(_args \\ []) do
-    targets = ['antidote@34.250.6.10',
-               'antidote@34.249.42.46',
-               'antidote@34.248.119.254',
-               'antidote@34.250.125.48',
-               'antidote@34.248.131.52']
+    targets = ['antidote@34.250.54.226', 'antidote@34.248.200.69', 'antidote@34.250.113.128', 'antidote@34.250.31.55', 'antidote@34.250.121.179']
     |> Enum.map(fn(x) -> :erlang.list_to_atom(x) end)
 
     num_players = 10000
@@ -44,6 +42,7 @@ defmodule AntidoteMetricsScript do
     # seed random number
     :rand.seed(:exsplus, {:erlang.phash2([my_name()]), :erlang.monotonic_time(), :erlang.unique_integer()})
 
+    Coordinator.start_link(%{ops: 0, total: @num_operations, ops_per_metric: @ops_per_metric, mode: @mode, nodes: targets})
     states = Enum.map(initial_states, fn(initial_state) ->
       Task.async(fn ->
         Enum.reduce(0..div(@num_operations, @nodes), initial_state, fn(op_number, state) ->
