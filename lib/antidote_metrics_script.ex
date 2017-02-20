@@ -214,8 +214,8 @@ defmodule AntidoteMetricsScript do
     get_size(topk)
   end
 
-  defp get_num_elements(:antidote_ccrdt_topk_rmv, {obs, masked, _, _, _, _}) do
-    :maps.size(obs) + :maps.size(masked)
+  defp get_num_elements(:antidote_ccrdt_topk_rmv, {elems, _, _, _}) do
+    :gb_sets.size(elems)
   end
 
   defp get_num_elements(:antidote_crdt_orset, orset) do
